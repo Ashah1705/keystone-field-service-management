@@ -22,11 +22,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
-/**
- * Stateless JWT security (Section 08). No sessions, no CSRF token needed since we never
- * rely on cookies for auth. @PreAuthorize on individual service/controller methods is where
- * the real role checks live - this class only wires the mechanism.
- */
 @Configuration
 @EnableMethodSecurity(prePostEnabled = true)
 @RequiredArgsConstructor
@@ -37,51 +32,149 @@ public class SecurityConfig {
     @Value("${keystone.cors.allowed-origins}")
     private String allowedOrigins;
 
+    // =========================
+    // Password Encoder
+    // =========================
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    // =========================
+    // Authentication Manager
+    // =========================
+
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
 
+    // =========================
+    // Authentication Provider
+    // =========================
+
     @Bean
     public DaoAuthenticationProvider authenticationProvider(
-            com.zidio.keystone.service.AppUserDetailsService uds, PasswordEncoder encoder) {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+            com.zidio.keystone.service.AppUserDetailsService uds,
+            PasswordEncoder encoder) {
+
+        DaoAuthenticationProvider provider =
+                new DaoAuthenticationProvider();
+
         provider.setUserDetailsService(uds);
         provider.setPasswordEncoder(encoder);
+
         return provider;
     }
 
+    // =========================
+    // Security Filter Chain
+    // =========================
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
         http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(csrf -> csrf.disable()) // stateless bearer-token API, no cookie-based auth
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // CORS configuration
+            .cors(cors ->
+                    cors.configurationSource(corsConfigurationSource())
+            )
+
+            // Disable CSRF because this is a stateless JWT API
+            .csrf(csrf -> csrf.disable())
+
+            // No HTTP sessions
+            .sessionManagement(sm ->
+                    sm.sessionCreationPolicy(
+                            SessionCreationPolicy.STATELESS
+                    )
+            )
+
+            // Authorization rules
             .authorizeHttpRequests(auth -> auth
+
+                // ---------------------------------
+                // PUBLIC ENDPOINTS
+                // ---------------------------------
+
+                // Root/home endpoint
+                .requestMatchers("/").permitAll()
+
+                // Login endpoint
                 .requestMatchers("/api/auth/login").permitAll()
-                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+
+                // Swagger
+                .requestMatchers(
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html"
+                ).permitAll()
+
+                // Health check
                 .requestMatchers("/actuator/health").permitAll()
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                // CORS preflight requests
+                .requestMatchers(
+                        HttpMethod.OPTIONS,
+                        "/**"
+                ).permitAll()
+
+                // ---------------------------------
+                // ALL OTHER ENDPOINTS
+                // ---------------------------------
+
+                // Everything else requires JWT
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+            // JWT filter
+            .addFilterBefore(
+                    jwtAuthenticationFilter,
+                    UsernamePasswordAuthenticationFilter.class
+            );
 
         return http.build();
     }
 
+    // =========================
+    // CORS Configuration
+    // =========================
+
     private CorsConfigurationSource corsConfigurationSource() {
+
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(allowedOrigins.split(",")));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
+
+        config.setAllowedOrigins(
+                List.of(allowedOrigins.split(","))
+        );
+
+        config.setAllowedMethods(
+                List.of(
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE",
+                        "OPTIONS"
+                )
+        );
+
+        config.setAllowedHeaders(
+                List.of("*")
+        );
+
         config.setAllowCredentials(true);
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
+
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
+        source.registerCorsConfiguration(
+                "/**",
+                config
+        );
+
         return source;
     }
 }
