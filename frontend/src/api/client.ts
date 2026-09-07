@@ -1,4 +1,3 @@
-```ts
 import axios from 'axios';
 
 // Backend URL:
@@ -49,4 +48,3 @@ export function apiErrorMessage(err: unknown): string {
 
   return 'Something went wrong';
 }
-```
