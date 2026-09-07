@@ -1,4 +1,8 @@
-FROM node:20-alpine
+```dockerfile
+# =========================
+# Stage 1: Build frontend
+# =========================
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
@@ -8,6 +12,17 @@ RUN npm ci
 
 COPY . .
 
-EXPOSE 5173
+RUN npm run build
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+
+# =========================
+# Stage 2: Serve with Nginx
+# =========================
+FROM nginx:alpine
+
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+```
